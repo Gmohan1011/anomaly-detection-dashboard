@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Shield, TrendingUp, TrendingDown, Bell, Settings, HelpCircle, Activity } from 'lucide-react';
 import { DEFAULT_CONFIG, INITIAL_ACTIVE_SYMBOLS } from './config/defaultConfig';
+import io from 'socket.io-client';
 
 
-// import SettingsPanel from './components/SettingsPanel';
+import SettingsPanel from './components/SettingsPanel';
 import StatsPanel from './components/StatsPanel';
+import StockChart from './components/StockChart';
+// import AlertFeed from './components/AlertFeed';
 
 function App() {
   const [allSymbols, setAllSymbols] = useState([]);
@@ -42,7 +45,118 @@ function App() {
       .catch((err) => console.error('Failed to load symbols catalog:', err));
   }, []);
 
- return(
+   useEffect(() => {
+    const socket = io('https://mock-data.tealvue.in', {
+      transports: ['websocket'],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+    });
+
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      setIsConnected(true);
+      // Subscribe to initial symbol set
+      socket.emit('subscribe', activeSymbols);
+    });
+
+    socket.on('disconnect', () => {
+      setIsConnected(false);
+    });
+
+    socket.on('ticker', (tick) => {
+      if (!tick || !tick.SYMBOL) return;
+      const symbol = tick.SYMBOL;
+
+      // Update ticks buffer in state
+      setTicks((prev) => {
+        const symTicks = prev[symbol] || [];
+
+        // Simulated day rollover detection
+        if (symTicks.length > 0) {
+          const prevTick = symTicks[symTicks.length - 1];
+          const prevDate = prevTick.TS.split(' ')[0];
+          const currDate = tick.TS.split(' ')[0];
+
+          if (prevDate !== currDate) {
+            // Simulated date changed (day rolled over), clear historical buffers
+            detectorRef.current.clearHistory(symbol);
+            return { ...prev, [symbol]: [tick] };
+          }
+        }
+
+        // Limit tick history size (1,500 is more than enough for a full simulated day)
+        return {
+          ...prev,
+          [symbol]: [...symTicks, tick].slice(-1500),
+        };
+      });
+
+      // Update telemetry
+      setTicksCount((c) => c + 1);
+      setSimulatedTime(tick.TS);
+
+      // Run anomaly detector
+      const alert = detectorRef.current.processTick(tick);
+      if (alert) {
+        setAlerts((prev) => [alert, ...prev].slice(0, 200));
+      }
+    });
+
+    return () => {
+      if (socket) {
+        socket.disconnect();
+      }
+      socketRef.current = null;
+    };
+  }, []);
+
+   useEffect(() => {
+    if (detectorRef.current) {
+      detectorRef.current.updateConfig(config);
+    }
+  }, [config]);
+
+   const handleSubscribeSymbol = (symbol) => {
+    if (!activeSymbols.includes(symbol)) {
+      const updatedList = [...activeSymbols, symbol];
+      setActiveSymbols(updatedList);
+
+      // Socket.io subscription update
+      if (socketRef.current && isConnected) {
+        socketRef.current.emit('subscribe', updatedList);
+      }
+    }
+  };
+
+
+   const handleUnsubscribeSymbol = (symbol) => {
+    if (activeSymbols.includes(symbol) && activeSymbols.length > 1) {
+      const updatedList = activeSymbols.filter((s) => s !== symbol);
+      setActiveSymbols(updatedList);
+
+      // Clean up buffers & state for the unsubscribed symbol
+      detectorRef.current.clearHistory(symbol);
+      setTicks((prev) => {
+        const next = { ...prev };
+        delete next[symbol];
+        return next;
+      });
+
+      // Select another active symbol if the deleted one was viewed
+      if (selectedSymbol === symbol) {
+        setSelectedSymbol(updatedList[0]);
+      }
+
+      // Socket.io subscription update
+      if (socketRef.current && isConnected) {
+        socketRef.current.emit('subscribe', updatedList);
+      }
+    }
+  };
+
+ return (
   <div>
      <div className="header-container">
         <div className="brand">
@@ -161,40 +275,40 @@ function App() {
                   </div>
                 </div>
 
-                {/* <div style={{ padding: '1rem 0' }}>
+                <div style={{ padding: '1rem 0' }}>
                   <StockChart
                     symbol={selectedSymbol}
                     ticks={ticks[selectedSymbol] || []}
                     alerts={alerts}
                   />
-                </div> */}
+                </div>
               </div>
             </div>
 
             {/* Sidebar Columns (Settings + Alerts Feed) */}
-            {/* <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
               <SettingsPanel
                 selectedSymbol={selectedSymbol}
                 config={config}
                 // onUpdateConfig={handleUpdateConfig}
                 activeSymbols={activeSymbols}
                 allSymbols={allSymbols}
-                // onSubscribeSymbol={handleSubscribeSymbol}
-                // onUnsubscribeSymbol={handleUnsubscribeSymbol}
+                onSubscribeSymbol={handleSubscribeSymbol}
+                onUnsubscribeSymbol={handleUnsubscribeSymbol}
               />
 
               <AlertFeed
                 alerts={alerts}
                 onClearAlerts={() => setAlerts([])}
               />
-            </div> */}
+            </div>
 
           </div>
         </div>
       </div>
 
   </div>
- )
+ );
 }
 
 export default App
