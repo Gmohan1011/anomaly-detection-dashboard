@@ -26,7 +26,7 @@ function App() {
 
   // Refs
   const socketRef = useRef(null);
-  const detectorRef = useRef(new AnomalyDetector(DEFAULT_CONFIG));
+  const detectorRef = useRef(DEFAULT_CONFIG);
 
   // Refs for scale testing metrics
   const scaleIntervalRef = useRef(null);
@@ -156,6 +156,141 @@ function App() {
     }
   };
 
+   const handleUpdateConfig = (symbol, symbolConfig) => {
+    // If a new strategy is configured, clear tick history to avoid mixing strategies incorrectly
+    detectorRef.current.clearHistory(symbol);
+    setTicks((prev) => ({ ...prev, [symbol]: [] }));
+
+    setConfig((prev) => ({
+      ...prev,
+      [symbol]: {
+        ...prev[symbol],
+        ...symbolConfig,
+      },
+    }));
+
+    // If strategy was changed, it requires re-running config
+    const updatedConfig = {
+      ...config,
+      [symbol]: {
+        ...config[symbol],
+        ...symbolConfig,
+      }
+    };
+    detectorRef.current.updateConfig(updatedConfig);
+  };
+
+   const handleToggleScaleTest = () => {
+    if (isScaleTesting) {
+      // Stop scale test
+      clearInterval(scaleIntervalRef.current);
+      clearInterval(scaleStatsIntervalRef.current);
+      scaleIntervalRef.current = null;
+      scaleStatsIntervalRef.current = null;
+      setIsScaleTesting(false);
+      setScaleTestStats({ ticksPerSec: 0, avgLatencyUs: 0 });
+
+      // Clean up scale test mock symbols from detector
+      for (let i = 0; i < 1000; i++) {
+        detectorRef.current.clearHistory(`SYM-${String(i).padStart(3, '0')}`);
+      }
+    } else {
+      // Start scale test (Simulate 1,000 active concurrent stock symbols)
+      setIsScaleTesting(true);
+
+      // Initialize configurations in detector for SYM-000 to SYM-999
+      const scaleConfig = { ...config };
+      for (let i = 0; i < 1000; i++) {
+        const symCode = `SYM-${String(i).padStart(3, '0')}`;
+        scaleConfig[symCode] = {
+          strategy: i % 2 === 0 ? 'spike' : 'movingAverage',
+          thresholdPercent: 0.8,
+          windowSec: 30,
+          deviationPercent: 1.5,
+          sampleSize: 10
+        };
+      }
+      detectorRef.current.updateConfig(scaleConfig);
+
+      let mockTickIndex = 0;
+      scaleMetricsRef.current = { ticksThisSecond: 0, latencySumMs: 0 };
+
+      // Telemetry statistics calculator (every 1 second)
+      scaleStatsIntervalRef.current = setInterval(() => {
+        const { ticksThisSecond, latencySumMs } = scaleMetricsRef.current;
+        const avgLatencyMs = ticksThisSecond > 0 ? (latencySumMs / ticksThisSecond) : 0;
+        const avgLatencyUs = avgLatencyMs * 1000; // Convert to microseconds
+
+        setScaleTestStats({
+          ticksPerSec: ticksThisSecond,
+          avgLatencyUs: avgLatencyUs
+        });
+
+        // Reset metrics for next interval
+        scaleMetricsRef.current = { ticksThisSecond: 0, latencySumMs: 0 };
+      }, 1000);
+
+      // Simulation feed loop (emits 100 mock ticks every 100ms = 1,000 ticks/sec)
+      scaleIntervalRef.current = setInterval(() => {
+        const baseDate = new Date();
+        const batchSize = 100;
+
+        for (let j = 0; j < batchSize; j++) {
+          const symId = mockTickIndex % 1000;
+          const symName = `SYM-${String(symId).padStart(3, '0')}`;
+          mockTickIndex++;
+
+          // Synthesize tick variables
+          const baseLtp = 100 + (symId % 20) * 15;
+          const ltp = baseLtp + (Math.random() - 0.5) * 5;
+
+          // Timestamp matches current system date
+          const date = new Date(baseDate.getTime() + mockTickIndex * 10);
+          const formattedTS = date.toISOString().replace('T', ' ').substring(0, 19) + '+05:30';
+
+          const tickPayload = {
+            SYMBOL: symName,
+            LTP: ltp,
+            TS: formattedTS,
+            PREV_CLOSE: baseLtp,
+          };
+
+          // Benchmark anomaly processing execution
+          const t0 = performance.now();
+          const alert = detectorRef.current.processTick(tickPayload);
+          const t1 = performance.now();
+
+          // Increment metrics
+          scaleMetricsRef.current.ticksThisSecond++;
+          scaleMetricsRef.current.latencySumMs += (t1 - t0);
+
+          if (alert) {
+            setAlerts((prev) => [alert, ...prev].slice(0, 200));
+          }
+        }
+
+        setTicksCount((c) => c + batchSize);
+      }, 100);
+    }
+  };
+
+  const getSidebarSymbolStats = (sym) => {
+    const symTicks = ticks[sym] || [];
+    if (symTicks.length === 0) return { price: 0, change: 0, direction: 'neutral' };
+
+    const lastTick = symTicks[symTicks.length - 1];
+    const price = lastTick.LTP !== undefined ? lastTick.LTP : lastTick.CLOSE;
+    const prevClose = lastTick.PREV_CLOSE || price;
+    const diff = price - prevClose;
+    const change = (diff / prevClose) * 100;
+
+    return {
+      price,
+      change,
+      direction: change > 0 ? 'up' : change < 0 ? 'down' : 'neutral'
+    };
+  };
+
  return (
   <div>
      <div className="header-container">
@@ -248,7 +383,7 @@ function App() {
             ticksCount={ticksCount}
             alertsCount={alerts.length}
             isScaleTesting={isScaleTesting}
-            // onToggleScaleTest={handleToggleScaleTest}
+            onToggleScaleTest={handleToggleScaleTest}
             scaleTestStats={scaleTestStats}
           />
 
@@ -290,7 +425,7 @@ function App() {
               <SettingsPanel
                 selectedSymbol={selectedSymbol}
                 config={config}
-                // onUpdateConfig={handleUpdateConfig}
+                onUpdateConfig={handleUpdateConfig}
                 activeSymbols={activeSymbols}
                 allSymbols={allSymbols}
                 onSubscribeSymbol={handleSubscribeSymbol}
