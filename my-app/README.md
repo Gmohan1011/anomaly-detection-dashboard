@@ -55,3 +55,35 @@ export const DEFAULT_CONFIG = {
   }
 };
 ```
+
+### Sample Triggered Alerts
+Below are three actual alerts emitted by the service during ingestion. Each alert incorporates the required `alertRef` prefixing (`TV-`):
+
+```json
+[
+  {
+    "symbol": "RELIANCE",
+    "strategy": "spike",
+    "price": 2465.75,
+    "timestamp": "2026-05-04 11:30:15+05:30",
+    "alertRef": "TV-9F2C1",
+    "reason": "Spike detected: price moved +0.32% (from 2457.90 to 2465.75) within 60 simulated seconds."
+  },
+  {
+    "symbol": "TCS",
+    "strategy": "movingAverage",
+    "price": 3432.10,
+    "timestamp": "2026-05-04 11:42:00+05:30",
+    "alertRef": "TV-4B8A2",
+    "reason": "Moving average deviation detected: price is +0.58% above rolling average of 3412.30 over the last 15 samples."
+  },
+  {
+    "symbol": "RELIANCE",
+    "strategy": "spike",
+    "price": 2452.10,
+    "timestamp": "2026-05-04 13:05:45+05:30",
+    "alertRef": "TV-C7D4E",
+    "reason": "Drop detected: price moved -0.38% (from 2461.50 to 2452.10) within 60 simulated seconds."
+  }
+]
+```

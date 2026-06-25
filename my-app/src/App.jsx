@@ -365,15 +365,7 @@ function App() {
               })}
             </div>
           </div>
-
-          <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-normal)', paddingTop: '1rem', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-            <div className="flex-gap-2" style={{ marginBottom: '4px' }}>
-              <HelpCircle size={12} />
-              <span>Simulated Speed: 20x accelerated</span>
-            </div>
-            <p>1 simulated trading clock loop spans May 04 – May 07, 09:15 - 15:30 IST.</p>
-          </div>
-        </div>
+</div>
 
         {/* Main Content Pane */}
         <div className="main-content">
