@@ -72,7 +72,7 @@ export default function SettingsPanel({
             className="select-custom"
             value={newSymbolSelect}
             onChange={(e) => setNewSymbolSelect(e.target.value)}
-            style={{ flex: 1 }}
+            style={{ flex: 1,width: '50%' }}
           >
             <option value="">Select stock to subscribe...</option>
             {availableSymbols.map((sym) => (

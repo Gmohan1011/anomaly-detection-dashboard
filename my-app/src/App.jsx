@@ -2,12 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Shield, TrendingUp, TrendingDown, Bell, Settings, HelpCircle, Activity } from 'lucide-react';
 import { DEFAULT_CONFIG, INITIAL_ACTIVE_SYMBOLS } from './config/defaultConfig';
 import io from 'socket.io-client';
+import { AnomalyDetector } from './services/anomalyDetector';
 
 
 import SettingsPanel from './components/SettingsPanel';
 import StatsPanel from './components/StatsPanel';
 import StockChart from './components/StockChart';
-// import AlertFeed from './components/AlertFeed';
+import AlertFeed from './components/AlertFeed';
 
 function App() {
   const [allSymbols, setAllSymbols] = useState([]);
@@ -26,7 +27,7 @@ function App() {
 
   // Refs
   const socketRef = useRef(null);
-  const detectorRef = useRef(DEFAULT_CONFIG);
+ const detectorRef = useRef(new AnomalyDetector(DEFAULT_CONFIG));
 
   // Refs for scale testing metrics
   const scaleIntervalRef = useRef(null);
